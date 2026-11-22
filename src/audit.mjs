@@ -3,8 +3,8 @@ import {createHash, timingSafeEqual} from 'node:crypto';
 /** NEO-002: offline hash-chain prototype. No persistence, signatures or authority. */
 const ZERO = '0'.repeat(64);
 const HEX = /^[0-9a-f]{64}$/;
+const isHash = value => typeof value === 'string' && HEX.test(value);
 const TYPES = new Set(['DENY', 'READ_ONLY', 'PREPARED']);
-const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const plain = o => o !== null && typeof o === 'object' &&
   !Array.isArray(o) && (Object.getPrototypeOf(o) === Object.prototype || Object.getPrototypeOf(o) === null);
 const sane = s => typeof s === 'string' && s.length >= 1 && s.length <= 128 && /^[A-Za-z0-9_.:-]+$/.test(s);
@@ -19,8 +19,8 @@ export function recordHash(record) {
 function validRecord(r) {
   return plain(r) && Object.keys(r).sort().join(',') ===
     'decision,hash,previousHash,reason,requestId,sequence' &&
-    Number.isSafeInteger(r.sequence) && r.sequence >= 1 && HEX.test(r.previousHash) &&
-    sane(r.requestId) && TYPES.has(r.decision) && sane(r.reason) && HEX.test(r.hash);
+    Number.isSafeInteger(r.sequence) && r.sequence >= 1 && isHash(r.previousHash) &&
+    sane(r.requestId) && TYPES.has(r.decision) && sane(r.reason) && isHash(r.hash);
 }
 function sameHash(a,b) {
   return timingSafeEqual(Buffer.from(a,'hex'),Buffer.from(b,'hex'));
@@ -45,13 +45,13 @@ export function verifyAudit(records, expectedHead) {
         !sameHash(r.hash,recordHash(r))) return bad('BROKEN_CHAIN');
     prev = r.hash;
   }
-  if (expectedHead !== undefined && (!HEX.test(expectedHead) || !sameHash(prev,expectedHead)))
+  if (expectedHead !== undefined && (!isHash(expectedHead) || !sameHash(prev,expectedHead)))
     return bad('CHECKPOINT_MISMATCH');
   return Object.freeze({ok:true, reason:'STRUCTURALLY_VALID', head:prev, count:records.length});
 }
 export function verifyCheckpoint(records, checkpoint) {
   if (!plain(checkpoint) || !Number.isSafeInteger(checkpoint.count) || checkpoint.count < 0 ||
-      typeof checkpoint.head !== 'string' || !HEX.test(checkpoint.head))
+      typeof checkpoint.head !== 'string' || !isHash(checkpoint.head))
     return Object.freeze({ok:false, reason:'INVALID_CHECKPOINT'});
   const result = verifyAudit(records, checkpoint.head);
   return Object.freeze({ok:result.ok && result.count === checkpoint.count,
