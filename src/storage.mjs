@@ -58,6 +58,7 @@ export async function commitLocalCheckpoint(directory, expectedTrustedAnchor, ev
     if (!current) return deny('CORRUPT_OR_UNREADABLE_STATE');
     const checked = recoverCheckpoint(current.records,expectedTrustedAnchor);
     if (!checked.ok) return deny('TRUSTED_CHECKPOINT_MISMATCH');
+    if (current.records.some(record => record.requestId === event?.requestId)) return deny('REPLAY');
     const proposal = proposeCheckpoint(current.records,expectedTrustedAnchor,event);
     if (!proposal.ok) return deny(proposal.reason);
     temp = join(directory,`.checkpoint-${randomUUID()}.tmp`);
