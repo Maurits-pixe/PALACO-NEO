@@ -42,3 +42,9 @@ test('invalid event refuses to persist',async()=>sandbox(async dir=>{
  assert.equal((await commitLocalCheckpoint(dir,INITIAL_ANCHOR,{...event('neo-004-a'),decision:'ALLOW'})).ok,false);
  assert.equal((await inspectLocalCheckpoint(dir,INITIAL_ANCHOR)).ok,true);
 }));
+
+test('duplicate request ID is rejected across committed checkpoints',async()=>sandbox(async dir=>{
+ const first=await commitLocalCheckpoint(dir,INITIAL_ANCHOR,event('neo-004-a'));
+ assert.equal(first.ok,true);
+ assert.equal((await commitLocalCheckpoint(dir,first.checkpoint,event('neo-004-a'))).reason,'REPLAY');
+}));
