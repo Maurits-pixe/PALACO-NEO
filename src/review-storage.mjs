@@ -1,4 +1,5 @@
-import {mkdir, open, readFile, rename, rm, lstat} from 'node:fs/promises';
+import {mkdir, open, rename, rm, rmdir, lstat} from 'node:fs/promises';
+import {constants} from 'node:fs';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {verifyReviewLedger, proposeReviewedDecision} from './review-ledger.mjs';
@@ -22,17 +23,26 @@ async function syncDirectory(dir) {
   try { await h.sync(); } finally { await h.close(); }
 }
 async function readState(dir) {
+  // Open first with O_NOFOLLOW and validate the opened descriptor, avoiding
+  // the lstat/readFile pathname race in the earlier draft.
+  let handle;
   try {
-    const path=join(dir,fileName),stat=await lstat(path);
-    if(!stat.isFile() || stat.isSymbolicLink() || stat.size>4_000_000) return null;
-    const parsed=JSON.parse(await readFile(path,'utf8'));
+    handle=await open(join(dir,fileName),constants.O_RDONLY|constants.O_NOFOLLOW);
+    const stat=await handle.stat();
+    if(!stat.isFile() || stat.nlink!==1 || stat.size>4_000_000) return null;
+    const data=await handle.readFile('utf8');
+    if(Buffer.byteLength(data,'utf8')>4_000_000) return null;
+    const parsed=JSON.parse(data);
     if(parsed===null || typeof parsed!=='object' || Array.isArray(parsed) ||
-      Object.keys(parsed).sort().join(',')!=='entries,schema' ||
-      parsed.schema!=='NEO-012-v1') return null;
+       Object.keys(parsed).sort().join(',')!=='entries,schema' ||
+       parsed.schema!=='NEO-012-v1') return null;
     return verifyReviewLedger(parsed.entries).ok ? parsed.entries : null;
-  } catch (error) {
-    if(error.code==='ENOENT') return [];
+  } catch(error) {
+    // If we failed to open or parse, only ENOENT on the initial open is genesis.
+    if(!handle && error.code==='ENOENT') return [];
     return null;
+  } finally {
+    if(handle) await handle.close().catch(()=>{});
   }
 }
 async function usableDirectory(dir) {
@@ -55,10 +65,15 @@ export async function inspectReviewStore(dir, trustedPosition) {
  */
 export async function commitReviewProposal(dir,trustedBefore,evidence) {
   if(!pos(trustedBefore) || !await usableDirectory(dir)) return reject('INVALID_INPUT_OR_DIRECTORY');
-  let lock=false,temp=null,renamed=false;
+  let lock=false,lockIdentity=null,temp=null,renamed=false;
   const lockPath=join(dir,lockName);
   try {
-    try { await mkdir(lockPath,{mode:0o700}); lock=true; }
+    try {
+      await mkdir(lockPath,{mode:0o700}); lock=true;
+      lockIdentity=await lstat(lockPath);
+      if(!lockIdentity.isDirectory() || lockIdentity.isSymbolicLink())
+        return reject('LOCK_INTEGRITY_FAILURE');
+    }
     catch(e) {return reject(e.code==='EEXIST'?'LOCKED':'LOCK_ERROR');}
     const entries=await readState(dir);
     if(!entries) return reject('CORRUPT_STORE');
@@ -91,7 +106,16 @@ export async function commitReviewProposal(dir,trustedBefore,evidence) {
   } finally {
     if(temp) await rm(temp,{force:true}).catch(()=>{});
     // Never steal another writer's lock: remove only one created by this operation.
-    if(lock) await rm(lockPath,{recursive:true,force:true}).catch(()=>{});
+    if(lock && lockIdentity) {
+      // Never recursively delete an attacker-substituted path. If the directory
+      // changed, leave it in place and require operator investigation.
+      try {
+        const current=await lstat(lockPath);
+        if(current.isDirectory() && !current.isSymbolicLink() &&
+           current.dev===lockIdentity.dev && current.ino===lockIdentity.ino)
+          await rmdir(lockPath);
+      } catch { /* fail closed: do not steal/repair locks */ }
+    }
   }
 }
 
