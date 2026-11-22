@@ -23,22 +23,23 @@ const policy={version:1,namespace:ns,reviewers:[
 const reviews=[['owner-review',owner],['security-review',security]].map(([reviewerId,k])=>({
  reviewerId,signature:sign(null,reviewPayload(ns,beforePin,transition.pin),k.privateKey).toString('base64')
 }));
-const proposal=proposeReviewedDecision({beforeRegistry:old,afterRegistry:transition.registry,
+const evidence={beforeRegistry:old,afterRegistry:transition.registry,
  beforePin,afterPin:transition.pin,reviews,policy,trustedPolicyPin:{version:1,digest:reviewerPolicyDigest(policy)},
- transitionId:'neo-012-review',ledger:[],trustedLedgerHead:genesis.head}).candidate;
+ transitionId:'neo-012-review',ledger:[],trustedLedgerHead:genesis.head};
+const proposal=proposeReviewedDecision(evidence).candidate;
 async function sandbox(fn) {
  const dir=await mkdtemp(join(tmpdir(),'palaco-review012-'));
  try {await fn(dir);} finally {await rm(dir,{recursive:true,force:true});}
 }
 test('commits verified candidate and can inspect pinned position',()=>sandbox(async dir=>{
- const r=await commitReviewProposal(dir,genesis,proposal);
+ const r=await commitReviewProposal(dir,genesis,evidence);
  assert.equal(r.ok,true);assert.equal(r.authorized,false);
  assert.equal((await inspectReviewStore(dir,r.position)).ok,true);
 }));
 test('old position cannot overwrite committed data',()=>sandbox(async dir=>{
- const r=await commitReviewProposal(dir,genesis,proposal);
+ const r=await commitReviewProposal(dir,genesis,evidence);
  const before=await readFile(join(dir,'review-ledger.json'),'utf8');
- assert.equal((await commitReviewProposal(dir,genesis,proposal)).reason,'TRUSTED_POSITION_CONFLICT');
+ assert.equal((await commitReviewProposal(dir,genesis,evidence)).reason,'TRUSTED_POSITION_CONFLICT');
  assert.equal(await readFile(join(dir,'review-ledger.json'),'utf8'),before);
  assert.equal((await inspectReviewStore(dir,genesis)).ok,false);
  assert.equal((await reconcileReviewStore(dir,genesis,proposal)).status,'COMMITTED');
@@ -46,11 +47,11 @@ test('old position cannot overwrite committed data',()=>sandbox(async dir=>{
 }));
 test('pre-existing lock blocks cooperative writer',()=>sandbox(async dir=>{
  await mkdir(join(dir,'.review-ledger.lock'));
- assert.equal((await commitReviewProposal(dir,genesis,proposal)).reason,'LOCKED');
+ assert.equal((await commitReviewProposal(dir,genesis,evidence)).reason,'LOCKED');
 }));
 test('corrupted file never resets to genesis',()=>sandbox(async dir=>{
  await writeFile(join(dir,'review-ledger.json'),'{broken');
- assert.equal((await commitReviewProposal(dir,genesis,proposal)).reason,'CORRUPT_STORE');
+ assert.equal((await commitReviewProposal(dir,genesis,evidence)).reason,'CORRUPT_STORE');
  assert.equal((await reconcileReviewStore(dir,genesis,proposal)).ok,false);
 }));
 test('abandoned temporary file never becomes committed state',()=>sandbox(async dir=>{
@@ -58,13 +59,13 @@ test('abandoned temporary file never becomes committed state',()=>sandbox(async 
  assert.equal((await reconcileReviewStore(dir,genesis,proposal)).status,'NOT_COMMITTED');
 }));
 test('mutated proposal rejected',()=>sandbox(async dir=>{
- const bad={...proposal,entry:{...proposal.entry,transitionId:'bad-review'}};
- assert.equal((await commitReviewProposal(dir,genesis,bad)).reason,'INVALID_PROPOSAL');
+ const bad={...evidence,reviews:[{...reviews[0],signature:reviews[1].signature},reviews[1]]};
+ assert.equal((await commitReviewProposal(dir,genesis,bad)).ok,false);
 }));
 test('unknown proposal input rejected',()=>sandbox(async dir=>{
  assert.equal((await commitReviewProposal(dir,genesis,null)).reason,'INVALID_PROPOSAL');
 }));
 test('missing independent anchor refused',()=>sandbox(async dir=>{
- assert.equal((await commitReviewProposal(dir,null,proposal)).ok,false);
+ assert.equal((await commitReviewProposal(dir,null,evidence)).ok,false);
  assert.equal((await inspectReviewStore(dir,null)).ok,false);
 }));
