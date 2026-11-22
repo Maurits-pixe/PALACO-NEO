@@ -50,10 +50,26 @@ async function usableDirectory(dir) {
   try { const s=await lstat(dir); return s.isDirectory()&&!s.isSymbolicLink(); }
   catch { return false; }
 }
+/** Best-effort pathname continuity guard, not a hostile-writer security boundary. */
+async function directoryIdentity(dir) {
+  try {
+    const stat=await lstat(dir);
+    return stat.isDirectory() && !stat.isSymbolicLink()
+      ? Object.freeze({dev:stat.dev,ino:stat.ino}) : null;
+  } catch { return null; }
+}
+async function sameDirectory(dir,identity) {
+  if(!identity) return false;
+  const current=await directoryIdentity(dir);
+  return current!==null && current.dev===identity.dev && current.ino===identity.ino;
+}
 export async function inspectReviewStore(dir, trustedPosition) {
   if(!pos(trustedPosition) || !await usableDirectory(dir)) return reject('INVALID_INPUT_OR_DIRECTORY');
+  const identity=await directoryIdentity(dir);
+  if(!identity) return reject('DIRECTORY_CHANGED');
   const entries=await readState(dir);
   if(!entries) return reject('CORRUPT_STORE');
+  if(!await sameDirectory(dir,identity)) return reject('DIRECTORY_CHANGED');
   const check=classifyReviewWritePreflight(entries,trustedPosition);
   return check.status==='MATCH' ? good('MATCHES_TRUSTED_POSITION',trustedPosition) :
     reject('TRUSTED_POSITION_CONFLICT');
@@ -66,6 +82,8 @@ export async function inspectReviewStore(dir, trustedPosition) {
 export async function commitReviewProposal(dir,trustedBefore,evidence) {
   if(!pos(trustedBefore) || !await usableDirectory(dir)) return reject('INVALID_INPUT_OR_DIRECTORY');
   let lock=false,lockIdentity=null,temp=null,renamed=false;
+  const startingDirectory=await directoryIdentity(dir);
+  if(!startingDirectory) return reject('DIRECTORY_CHANGED');
   const lockPath=join(dir,lockName);
   try {
     try {
@@ -75,8 +93,10 @@ export async function commitReviewProposal(dir,trustedBefore,evidence) {
         return reject('LOCK_INTEGRITY_FAILURE');
     }
     catch(e) {return reject(e.code==='EEXIST'?'LOCKED':'LOCK_ERROR');}
+    if(!await sameDirectory(dir,startingDirectory)) return reject('DIRECTORY_CHANGED');
     const entries=await readState(dir);
     if(!entries) return reject('CORRUPT_STORE');
+    if(!await sameDirectory(dir,startingDirectory)) return reject('DIRECTORY_CHANGED');
     const preflight=classifyReviewWritePreflight(entries,trustedBefore);
     if(preflight.status!=='MATCH') return reject('TRUSTED_POSITION_CONFLICT');
     // Re-evaluate both cryptographic signatures and replay protection against
@@ -96,9 +116,12 @@ export async function commitReviewProposal(dir,trustedBefore,evidence) {
       await handle.writeFile(JSON.stringify({schema:'NEO-012-v1',entries:candidate})+'\n','utf8');
       await handle.sync();
     } finally { await handle.close(); }
+    if(!await sameDirectory(dir,startingDirectory)) return reject('DIRECTORY_CHANGED');
     await rename(temp,join(dir,fileName));
     renamed=true;temp=null;
     await syncDirectory(dir);
+    if(!await sameDirectory(dir,startingDirectory))
+      return reject('UNCERTAIN_COMMIT_RECONCILE_REQUIRED');
     return good('LOCAL_COMMIT_NOT_INDEPENDENTLY_TRUSTED',
       {count:candidate.length,head:proposal.head});
   } catch {
@@ -122,8 +145,11 @@ export async function commitReviewProposal(dir,trustedBefore,evidence) {
 /** Read-only post-error assessment; no automatic lock removal or retry. */
 export async function reconcileReviewStore(dir,before,proposal) {
   if(!pos(before) || !await usableDirectory(dir)) return reject('INVALID_INPUT_OR_DIRECTORY');
+  const identity=await directoryIdentity(dir);
+  if(!identity) return reject('DIRECTORY_CHANGED');
   const entries=await readState(dir);
   if(!entries) return reject('CORRUPT_STORE');
+  if(!await sameDirectory(dir,identity)) return reject('DIRECTORY_CHANGED');
   const classification=classifyReviewRecovery(entries,before,proposal);
   return Object.freeze({ok:classification.status!=='HOLD',reason:classification.reason,
     status:classification.status,authorized:false});
