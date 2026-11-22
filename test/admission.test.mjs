@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {evaluateAdmission, GO13, AUTHORIZATION} from '../src/admission.mjs';
+const snapshot = () => ({phase: 'REVIEW', revision: 2, seenIds: []});
+const request = (action='prepare') => ({action, id:'neo-001-a', expectedRevision:2});
+test('permanent governance barriers', () => {assert.equal(GO13,'HOLD'); assert.equal(AUTHORIZATION,'DENY');
+  for (const action of ['execute','publish']) assert.deepEqual(evaluateAdmission(request(action),snapshot()), {decision:'DENY',reason:'GO13_HOLD',next:null}); });
+test('inspection is read only', () => assert.deepEqual(evaluateAdmission(request('inspect'),snapshot()), {decision:'READ_ONLY',reason:'INSPECTION',next:null}));
+test('prepare requires review, advances only simulated snapshot', () => {const s=snapshot();const result=evaluateAdmission(request(),s);assert.equal(result.decision,'PREPARED');assert.deepEqual(result.next,{phase:'READY',revision:3,seenIds:['neo-001-a']});assert.deepEqual(s,snapshot());});
+test('reject stale revision and replay', () => {assert.equal(evaluateAdmission({...request(),expectedRevision:1},snapshot()).reason,'STALE_REVISION');assert.equal(evaluateAdmission(request(),{...snapshot(),seenIds:['neo-001-a']}).reason,'REPLAY');});
+test('reject malformed fail-closed inputs', () => {for(const pair of [[null,snapshot()],[request(),null],[{...request(),id:'bad'},snapshot()],[request(),{...snapshot(),revision:-1}],[request(),{...snapshot(),seenIds:['x','x']}],[request('unknown'),snapshot()]]) assert.equal(evaluateAdmission(...pair).decision,'DENY');});
+test('prepare outside review denied', () => assert.equal(evaluateAdmission(request(),{...snapshot(),phase:'DRAFT'}).reason,'REVIEW_REQUIRED'));
