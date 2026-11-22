@@ -63,7 +63,7 @@ test('mutated proposal rejected',()=>sandbox(async dir=>{
  assert.equal((await commitReviewProposal(dir,genesis,bad)).ok,false);
 }));
 test('unknown proposal input rejected',()=>sandbox(async dir=>{
- assert.equal((await commitReviewProposal(dir,genesis,null)).reason,'INVALID_PROPOSAL');
+ assert.equal((await commitReviewProposal(dir,genesis,null)).reason,'INVALID_REVIEW_EVIDENCE');
 }));
 test('missing independent anchor refused',()=>sandbox(async dir=>{
  assert.equal((await commitReviewProposal(dir,null,evidence)).ok,false);
