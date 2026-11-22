@@ -1,12 +1,12 @@
 import {mkdir, open, readFile, rename, rm, lstat} from 'node:fs/promises';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {verifyReviewLedger} from './review-ledger.mjs';
+import {verifyReviewLedger, proposeReviewedDecision} from './review-ledger.mjs';
 import {classifyReviewRecovery, classifyReviewWritePreflight, REVIEW_INITIAL_POSITION} from './review-recovery.mjs';
 
 /**
  * NEO-012: single-host cooperative-writer file adapter for reviewed decisions.
- * Trust anchors and proposal MUST originate from independently authenticated custody.
+ * Trust anchors, reviewer keys and policy pin MUST originate from independently authenticated custody.
  * No approval, authority, secrets, or auto-retry. Not suitable for hostile local writers.
  */
 const fileName='review-ledger.json', lockName='.review-ledger.lock';
@@ -49,11 +49,11 @@ export async function inspectReviewStore(dir, trustedPosition) {
     reject('TRUSTED_POSITION_CONFLICT');
 }
 /**
- * Commit the specific pre-reviewed, signed-evidence-derived ledger proposal.
- * This module verifies linkage and the prior chain, not the reviewers' signatures:
- * caller must verify signatures with NEO-010 and independently preserve the proposal.
+ * NEO-013: recompute & verify signed review evidence while holding the
+ * cooperative single-host lock. Callers cannot pass an arbitrary ledger entry.
+ * Reviewer policy, trusted pin and reviewer keys MUST be independently trusted.
  */
-export async function commitReviewProposal(dir,trustedBefore,proposal) {
+export async function commitReviewProposal(dir,trustedBefore,evidence) {
   if(!pos(trustedBefore) || !await usableDirectory(dir)) return reject('INVALID_INPUT_OR_DIRECTORY');
   let lock=false,temp=null,renamed=false;
   const lockPath=join(dir,lockName);
@@ -64,8 +64,15 @@ export async function commitReviewProposal(dir,trustedBefore,proposal) {
     if(!entries) return reject('CORRUPT_STORE');
     const preflight=classifyReviewWritePreflight(entries,trustedBefore);
     if(preflight.status!=='MATCH') return reject('TRUSTED_POSITION_CONFLICT');
-    // A candidate must be structurally valid and link to the trusted predecessor.
-    const candidate=[...entries,proposal?.entry];
+    // Re-evaluate both cryptographic signatures and replay protection against
+    // the actual current ledger under the same cooperative writer lock.
+    if(!evidence || typeof evidence!=='object' || Array.isArray(evidence))
+      return reject('INVALID_REVIEW_EVIDENCE');
+    const requested=Object.freeze({...evidence,ledger:entries,trustedLedgerHead:trustedBefore.head});
+    const validation=proposeReviewedDecision(requested);
+    if(!validation.ok) return reject('REVIEW_'+validation.reason);
+    const proposal=validation.candidate;
+    const candidate=[...entries,proposal.entry];
     const classification=classifyReviewRecovery(candidate,trustedBefore,proposal);
     if(classification.status!=='COMMITTED') return reject('INVALID_PROPOSAL');
     temp=join(dir,`.review-ledger-${randomUUID()}.tmp`);
