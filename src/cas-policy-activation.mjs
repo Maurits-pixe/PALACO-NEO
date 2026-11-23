@@ -111,21 +111,18 @@ export function verifyPolicyActivationReceipt(request,receipt,trust){
 /** Read-only two-sided recovery classification. An APPLIED receipt alone cannot
  * imply durable activation: independently observed external state must advance.
  */
-export function reconcilePolicyActivation(request,observedExternalPolicy,verifiedReceipt){
+export function reconcilePolicyActivation(request,observedExternalPolicy,receipt,trust){
  if(!validRequest(request)||!pin(observedExternalPolicy))
   return state('HOLD','INVALID_RECONCILIATION_INPUT');
  const old=matching(observedExternalPolicy,request.before);
  const next=matching(observedExternalPolicy,request.after);
  if(!old&&!next)return state('HOLD','UNKNOWN_OR_FORKED_POLICY');
- if(verifiedReceipt===null){
+ if(receipt===null){
   return old?state('NOT_COMMITTED','EXTERNAL_REMAINS_BEFORE'):
    state('HOLD','EXTERNAL_ADVANCED_WITHOUT_VERIFIED_RECEIPT');
  }
- if(!plain(verifiedReceipt)||verifiedReceipt.ok!==true||
-    verifiedReceipt.authorized!==false||!plain(verifiedReceipt.candidate)||
-    !hex(verifiedReceipt.candidate.evidenceDigest)||
-    verifiedReceipt.reason!=='SIGNED_EXTERNAL_ASSERTION_ONLY')
-  return state('HOLD','UNVERIFIED_ACTIVATION_RECEIPT');
+ const verified=verifyPolicyActivationReceipt(request,receipt,trust);
+ if(!verified.ok)return state('HOLD','UNVERIFIED_ACTIVATION_RECEIPT');
  return old?state('HOLD','SIGNED_APPLIED_BUT_EXTERNAL_STILL_BEFORE'):
   state('OBSERVED_COMMITTED','SIGNED_ASSERTION_AND_EXTERNAL_AFTER_NO_AUTHORITY');
 }
