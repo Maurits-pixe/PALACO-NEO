@@ -47,6 +47,7 @@ test('successive change is validated against the policy in force before that cha
 });
 test('role reassignment of existing reviewer is forbidden',()=>{
  const next=added();next.reviewers[0]={...next.reviewers[0],role:'SECURITY'};
+ next.reviewers[2]={...next.reviewers[2],role:'OWNER'};
  assert.equal(check([create(base(),next,1,genesis.head,'change-001')]).reason,
   'UNEXPECTED_POLICY_TRANSITION');
 });
