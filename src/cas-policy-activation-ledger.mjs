@@ -97,7 +97,7 @@ export function verifyPolicyActivationCheckpoint(entries,externalTrust,initialPo
  if(witnessTrust.status!=='ACTIVE')return failure('REVOKED_CHECKPOINT_WITNESS');
  if(seal.witnessId!==witnessTrust.witnessId||
     seal.checkpoint?.namespace!==witnessTrust.namespace||
-    (entries.length>0&&entries[0]?.request?.namespace!==witnessTrust.namespace))
+    (Array.isArray(entries)&&entries.length>0&&entries[0]?.request?.namespace!==witnessTrust.namespace))
    return failure('CHECKPOINT_NAMESPACE_CONFLICT');
  const verified=verifyPolicyActivationLedger(entries,externalTrust,initialPolicy,trustedFloor);
  if(!verified.ok)return failure('LEDGER_'+verified.reason);
