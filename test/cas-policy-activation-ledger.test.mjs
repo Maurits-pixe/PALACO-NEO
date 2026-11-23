@@ -84,7 +84,7 @@ test('replayed operation ID is rejected',()=>{
  'DUPLICATE_OPERATION_OR_CHANGE');
 });
 test('noncontiguous policy version is denied',()=>{
- const f=fixtures(),r=req(2,original,p3);
+ const f=fixtures(),r=req(2,original,p2);
  f.entries[1]=record(r,2,f.entries[0].hash);
  assert.equal(verifyPolicyActivationLedger(f.entries,f.trust,original,genesis).reason,
  'NONCONTIGUOUS_POLICY_HISTORY');
