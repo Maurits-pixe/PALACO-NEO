@@ -85,7 +85,7 @@ export function verifyRepairConflictJournal(entries,evidence,policy,policyPin,tr
  const cases=new Map(),forks=new Set();
  for(let i=0;i<entries.length;i++){
   const e=entries[i],ev=evidence[i];
-  if(!exact(e,entryFields)||!validBody(e)||
+  if(!exact(e,entryFields)||!validBody(Object.fromEntries(bodyFields.map(k=>[k,e[k]])))||
      e.sequence!==i+1||e.previousHash!==head||!hex(e.hash)||
      !Array.isArray(e.reviews)||e.reviews.length!==2)
    return fail('BROKEN_CONFLICT_JOURNAL_CHAIN');
