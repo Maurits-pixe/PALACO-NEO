@@ -64,10 +64,10 @@ function validateBytes(artifacts,expected){
  * The signing key and freshness/identity must be separately authenticated.
  */
 export function assessReplicaArchive(manifest,pinnedInventoryDigest,lineagePosition,
- replicas,trusts,expectedReplicaIds){
+ replicas,trusts,expectedReplicaIds,expectedNamespace){
  let digest;
  try{digest=transferInventoryDigest(manifest);}catch{return denied('INVALID_MANIFEST');}
- if(digest!==pinnedInventoryDigest||!hex(pinnedInventoryDigest)||
+ if(digest!==pinnedInventoryDigest||!hex(pinnedInventoryDigest)||!id(expectedNamespace)||
     !pos(lineagePosition)||!Array.isArray(replicas)||!Array.isArray(trusts)||
     !Array.isArray(expectedReplicaIds)||replicas.length<2||replicas.length>16||
     replicas.length!==trusts.length||replicas.length!==expectedReplicaIds.length||
@@ -80,7 +80,7 @@ export function assessReplicaArchive(manifest,pinnedInventoryDigest,lineagePosit
   if(!exact(rec,recordKeys)||!exact(t,trustKeys)||!plain(rec.body)||
      !expectedReplicaIds.includes(rec.body.replicaId)||
      ids.has(rec.body.replicaId)||rec.body.replicaId!==t.replicaId||
-     rec.body.namespace!==t.namespace||
+     rec.body.namespace!==t.namespace||rec.body.namespace!==expectedNamespace||
      rec.body.caseId!==manifest.caseId||
      rec.body.inventoryDigest!==digest||
      !pos(rec.body.lineagePosition)||
