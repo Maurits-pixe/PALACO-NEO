@@ -79,8 +79,8 @@ test('two reviewers in same role are insufficient',()=>{
  assert.equal(verify(e,p,r).reason,'DUPLICATE_ROLE');
 });
 test('revoked reviewer is rejected',()=>{
- const p=policy(),e=event();const r=reviews(e,p);
- p.reviewers[1].status='REVOKED';
+ const p=policy(),e=event();p.reviewers[1].status='REVOKED';
+ const r=reviews(e,p);
  assert.equal(verify(e,p,r).reason,'UNKNOWN_OR_REVOKED_REVIEWER');
 });
 test('modified independent policy pin blocks all decisions',()=>{
