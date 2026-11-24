@@ -468,7 +468,7 @@ test('manifest digest is deterministic for unchanged original evidence',()=>{
  assert.deepEqual(copy,f.bundle.manifest);
 });
 test('invalid malformed manifests and signatures fail closed',()=>{
- const f=package051();f.bundle.manifest.count=0;
+ const f=package051();f.bundle.manifest={...f.bundle.manifest,count:0};
  assert.equal(check051(f).reason,'INVALID_TRANSFER_INPUT');
  assert.throws(()=>escalationEvidenceManifest([]),/INVALID_EVIDENCE_RECORDS/);
 });
