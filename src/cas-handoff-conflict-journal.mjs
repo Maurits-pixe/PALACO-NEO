@@ -107,7 +107,13 @@ export function verifyHandoffConflictJournal(entries,evidence,policy,policyPin,
      JSON.stringify(source.left.body)!==JSON.stringify(canonical.seal.body)||
      !canonical.seal.witnesses.some(w=>
        w.witnessId===source.left.witness?.witnessId&&
-       w.signature===source.left.witness?.signature))
+       w.signature===source.left.witness?.signature)||
+     !canonical.witnessTrust.some(t=>
+       t.witnessId===source.trust?.witnessId&&
+       t.namespace===source.trust.namespace&&
+       t.publicKeyPem===source.trust.publicKeyPem&&
+       t.expectedCheckpointId===source.trust.expectedCheckpointId&&
+       t.status===source.trust.status))
    return fail('CONFLICT_NOT_BOUND_TO_VERIFIED_CHECKPOINT');
   const conflict=inspectHandoffWitnessConflict(source.left,source.right,
    source.trust,source.trustedPredecessor);
