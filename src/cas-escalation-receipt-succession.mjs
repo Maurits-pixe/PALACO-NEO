@@ -74,8 +74,7 @@ export function verifyEscalationReceiptSuccession(records,trustedFloor){
   if(b.checkpointPosition.count<previousCheckpoint.count)
    return deny('TRANSFER_CHECKPOINT_ROLLBACK');
   if(priorRecords!==null&&priorRecords.some((r,index)=>
-     t.bundle.records[index]?.seal?.hash!==r.seal.hash||
-     false))
+     t.bundle.records[index]?.seal?.hash!==r.seal.hash))
    return deny('TRANSFER_CHECKPOINT_HISTORY_REWRITTEN');
   // Compare original evidence commitment as well as signed checkpoint headers.
   if(priorRecords!==null&&priorRecords.some((r,index)=>
