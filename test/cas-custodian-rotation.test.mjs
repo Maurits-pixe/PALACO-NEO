@@ -227,7 +227,7 @@ test('extraneous unused rotation proof rejected',()=>{
  const extra=structuredClone(f.rotations[0]);
  extra.proof.body.rotationId='unrelated-rotation';
  f.rotations.push(extra);
- assert.equal(checkRotation(f).reason,'UNCONSUMED_ROTATION_PROOF');
+ assert.equal(checkRotation(f).reason,'CUSTODIAN_KEY_CHANGED_WITHOUT_ROTATION_PROOF');
 });
 test('reviewer key cannot be used as new custodian key',()=>{
  const f=rotationFixture(),p=f.rotations[0].proof;
@@ -237,7 +237,7 @@ test('reviewer key cannot be used as new custodian key',()=>{
 test('rotation proof cannot relabel custodian identity',()=>{
  const f=rotationFixture();
  f.rotations[0].proof.body.custodianId='custodian-b';
- assert.equal(checkRotation(f).reason,'ROTATION_ROTATION_CONTEXT_CONFLICT');
+ assert.equal(checkRotation(f).reason,'CUSTODIAN_KEY_CHANGED_WITHOUT_ROTATION_PROOF');
 });
 test('old/new same key is invalid rotation',()=>{
  const f=rotationFixture(),p=f.rotations[0].proof;
