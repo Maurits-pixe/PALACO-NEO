@@ -420,9 +420,9 @@ test('substitution of manifest checkpoint ID is refused',()=>{
  const f=package051();f.bundle.manifest.items[0].checkpointId='checkpoint-forged';
  assert.equal(check051(f).reason,'MANIFEST_OR_EVIDENCE_SUBSTITUTED');
 });
-test('changing reported transfer ID invalidates both signatures',()=>{
+test('changing reported transfer ID invalidates receipt trust scope',()=>{
  const f=package051();f.bundle.transferId='transfer-forged';
- assert.equal(check051(f).reason,'INVALID_ARCHIVE_RECEIPT_SIGNATURE');
+ assert.equal(check051(f).reason,'INVALID_OR_REVOKED_RECIPIENT');
 });
 test('changing the verified floor invalidates checkpoint validation',()=>{
  const f=package051();f.bundle.trustedCheckpointFloor={count:1,head:'f'.repeat(64)};
