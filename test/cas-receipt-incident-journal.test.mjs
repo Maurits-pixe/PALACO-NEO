@@ -520,7 +520,7 @@ test('tampered canonical checkpoint signature denied',()=>{
  assert.match(check054(f).reason,/^CHECKPOINT_/);
 });
 test('untrusted witness public key substitution cannot support conflict',()=>{
- const f=incident054();f.evidence[0].trust.publicKeyPem=pem(forged);
+ const f=incident054();f.evidence[0].trust={...f.evidence[0].trust,publicKeyPem:pem(forged)};
  assert.equal(check054(f).reason,'CONFLICT_NOT_BOUND_TO_CANONICAL_CHECKPOINT');
 });
 test('canonical checkpoint hash substitution denied',()=>{
