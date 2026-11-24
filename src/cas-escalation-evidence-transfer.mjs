@@ -9,7 +9,7 @@ const id=x=>typeof x==='string'&&/^[A-Za-z0-9_.:-]{3,64}$/.test(x);
 const hex=x=>typeof x==='string'&&/^[0-9a-f]{64}$/.test(x);
 const b64=x=>typeof x==='string'&&/^[A-Za-z0-9+/]{86}==$/.test(x)&&
  Buffer.from(x,'base64').toString('base64')===x;
-const pos=x=>exact(x,['count','head'])&&Number.isSafeInteger(x.count)&&x.count>=1&&x.count<=64&&hex(x.head);
+const pos=x=>exact(x,['count','head'])&&Number.isSafeInteger(x.count)&&x.count>=0&&x.count<=64&&hex(x.head);
 const fail=reason=>Object.freeze({ok:false,phase:'HOLD',reason,authorized:false,candidate:null});
 const sha=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const bundleFields=['schema','namespace','transferId','trustedCheckpointFloor','records','manifest'];
