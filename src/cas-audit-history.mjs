@@ -1,4 +1,5 @@
 import {createHash,createPublicKey} from 'node:crypto';
+import {verifyCustodianRotation} from './cas-custodian-rotation.mjs';
 import {verifyAuditCheckpoint,auditCheckpointHash,INITIAL_AUDIT_CHECKPOINT_POSITION}
  from './cas-audit-checkpoint.mjs';
 
@@ -34,14 +35,28 @@ export function auditHistoryEntryHash(sequence,previousHash,seal){
  * This verifier does not retain an external floor; that must be supplied from
  * separately authenticated, monotonic storage on every invocation.
  */
-export function verifyAuditCheckpointSuccession(history,trustedHistoryFloor){
- if(!Array.isArray(history)||history.length>64||!pos(trustedHistoryFloor))
+export function verifyAuditCheckpointSuccession(history,trustedHistoryFloor,rotations=[]){
+ if(!Array.isArray(history)||history.length>64||!pos(trustedHistoryFloor)||
+    !Array.isArray(rotations)||rotations.length>64)
   return fail('INVALID_AUDIT_HISTORY_INPUT');
  if(history.length<trustedHistoryFloor.count)return fail('AUDIT_HISTORY_ROLLBACK');
  let head=INITIAL_AUDIT_CHECKPOINT_POSITION.head;
  let previousJournal=INITIAL_AUDIT_CHECKPOINT_POSITION;
  let namespace=null;
  const checkpointIds=new Set(),custodianKeys=new Map(),keyOwners=new Map();
+ const previousPems=new Map(),rotationIds=new Set(),usedRotations=new Set();
+ const rotationBySequence=new Map();
+ for(const item of rotations){
+  if(!exact(item,['atSequence','proof'])||!Number.isSafeInteger(item.atSequence)||
+      item.atSequence<2||item.atSequence>history.length||
+      !plain(item.proof)||!plain(item.proof.body)||
+      !id(item.proof.body.rotationId)||
+      rotationIds.has(item.proof.body.rotationId))
+   return fail('INVALID_OR_REPLAYED_ROTATION_INPUT');
+  const list=rotationBySequence.get(item.atSequence)??[];
+  list.push(item.proof);rotationBySequence.set(item.atSequence,list);
+  rotationIds.add(item.proof.body.rotationId);
+ }
  const snapshots=[];
  for(let i=0;i<history.length;i++){
   const e=history[i];
@@ -64,18 +79,37 @@ export function verifyAuditCheckpointSuccession(history,trustedHistoryFloor){
   // a later checkpoint cannot pretend a journal changed or shrank.
   if(verified.candidate.position.count<previousJournal.count)
    return fail('AUDIT_JOURNAL_ROLLBACK');
+  const pending=rotationBySequence.get(i+1)??[];
+  const usedAtSequence=new Set();
   for(const trust of e.trusts){
    const fingerprint=pub(trust.publicKeyPem);
    if(!fingerprint)return fail('INVALID_HISTORICAL_CUSTODIAN_KEY');
    const previous=custodianKeys.get(trust.custodianId);
-   if(previous!==undefined&&previous!==fingerprint)
-    return fail('CUSTODIAN_KEY_CHANGED_WITHOUT_ROTATION_PROOF');
+   if(previous!==undefined&&previous!==fingerprint){
+    const matching=pending.filter(p=>p.body?.custodianId===trust.custodianId);
+    if(matching.length!==1)return fail('CUSTODIAN_KEY_CHANGED_WITHOUT_ROTATION_PROOF');
+    const proof=matching[0],expected={
+     namespace:body.namespace,custodianId:trust.custodianId,
+     oldKeyPem:previousPems.get(trust.custodianId),
+     newKeyPem:trust.publicKeyPem,atSequence:i+1,
+     previousHistoryHead:head,checkpointId:body.checkpointId
+    };
+    if(keyOwners.has(fingerprint))
+     return fail('HISTORICAL_CUSTODIAN_KEY_REUSE');
+    const checked=verifyCustodianRotation(proof,e.policy,e.policyPin,expected);
+    if(!checked.ok)return fail('ROTATION_'+checked.reason);
+    usedAtSequence.add(proof.body.rotationId);
+    usedRotations.add(proof.body.rotationId);
+   }
    const other=keyOwners.get(fingerprint);
    if(other!==undefined&&other!==trust.custodianId)
     return fail('REUSED_KEY_ACROSS_CUSTODIAN_IDENTITIES');
    custodianKeys.set(trust.custodianId,fingerprint);
+   previousPems.set(trust.custodianId,trust.publicKeyPem);
    keyOwners.set(fingerprint,trust.custodianId);
   }
+  if(usedAtSequence.size!==pending.length)
+   return fail('UNCONSUMED_ROTATION_PROOF');
   namespace=body.namespace;
   checkpointIds.add(body.checkpointId);
   previousJournal=verified.candidate.position;
@@ -83,6 +117,7 @@ export function verifyAuditCheckpointSuccession(history,trustedHistoryFloor){
   snapshots.push(Object.freeze({sequence:i+1,head,checkpointId:body.checkpointId,
    journalPosition:Object.freeze({...previousJournal})}));
  }
+ if(usedRotations.size!==rotations.length)return fail('UNUSED_ROTATION_EVIDENCE');
  const floorHead=trustedHistoryFloor.count===0?INITIAL_AUDIT_CHECKPOINT_POSITION.head:
   snapshots[trustedHistoryFloor.count-1].head;
  if(floorHead!==trustedHistoryFloor.head)return fail('TRUSTED_AUDIT_HISTORY_FORK');
