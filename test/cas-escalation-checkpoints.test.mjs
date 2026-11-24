@@ -447,7 +447,7 @@ test('original NEO-048 source archive tampering invalidates checkpoint',()=>{
 });
 test('wrong signed escalation position is rejected against reconstructed register',()=>{
  const a=checkpoint050();
- a.seal.body.escalationPosition.head='f'.repeat(64);
+ a.seal.body.escalationPosition={...a.seal.body.escalationPosition,head:'f'.repeat(64)};
  assert.equal(check050([a]).reason,'ESCALATION_CHECKPOINT_EVIDENCE_CONFLICT');
 });
 test('same custodian key signing conflicting checkpoints yields HOLD evidence',()=>{
