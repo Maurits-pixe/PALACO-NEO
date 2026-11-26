@@ -861,7 +861,7 @@ test('OWNER reviewer key cannot double as independent custodian',()=>{
  assert.equal(check065([a]).reason,'NONINDEPENDENT_CHECKPOINT_CUSTODIAN');
 });
 test('disputed witness key cannot double as independent audit custodian',()=>{
- const a=checkpoint065();a.custodianTrust[0].publicKeyPem=pem(witness058a);
+ const a=checkpoint065();a.custodianTrust[0].publicKeyPem=pem(audit063a);
  assert.equal(check065([a]).reason,'NONINDEPENDENT_CHECKPOINT_CUSTODIAN');
 });
 test('revoked audit key is denied',()=>{
@@ -878,13 +878,18 @@ test('original OWNER review forgery invalidates NEO-060 checkpoint',()=>{
  const a=checkpoint065();a.source.entries[0].reviews[0].signature='a'.repeat(88);
  assert.match(check065([a]).reason,/^INCIDENT_/);
 });
-test('original archived evidence substitution invalidates NEO-060 checkpoint',()=>{
- const a=checkpoint065();
- a.source.evidence[0].canonicalHistory[0].source.entries[0]
- .transfer.bundle.records[0].source.evidence[0].canonicalHistory[0]
- .source.entries[0].transfer.bundle.records[0].source.evidence[0]
- .canonicalHistory[0].source.history[0].evidence[0].left[0]
- .post.replicas[0].artifacts[0].base64='YmFk';
+test('deeply nested original archive byte substitution invalidates NEO-065 checkpoint',()=>{
+ const a=checkpoint065(),stack=[a.source];
+ let changed=false;
+ while(stack.length>0){
+  const node=stack.pop();
+  if(node===null||typeof node!=='object')continue;
+  if(node.artifactId==='file-001'&&typeof node.base64==='string'){
+   node.base64='YmFk';changed=true;break;
+  }
+  for(const value of Object.values(node))stack.push(value);
+ }
+ assert.equal(changed,true,'A deep original archive artifact must be present');
  assert.match(check065([a]).reason,/^INCIDENT_/);
 });
 test('tampered checkpoint hash denied',()=>{
